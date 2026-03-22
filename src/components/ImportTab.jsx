@@ -1,157 +1,133 @@
 import React, { useState } from 'react'
 import { useStore } from '../store'
 
-const AI_PROMPT = `Convert my resource list into this EXACT JSON format. Return ONLY valid JSON, no markdown, no explanation:
+const AI_PROMPT = `Convert my list into EXACT JSON — no markdown:
 
-{
-  "resources": [
-    {
-      "type": "link|tool|pdf|roadmap|internship|course|image|note|repo|other",
-      "title": "Resource Name",
-      "url": "https://...",
-      "description": "1-2 sentence description",
-      "category": "Category Name",
-      "tags": ["tag1", "tag2"],
-      "priority": "normal|high|pinned"
-    }
-  ]
-}
+{"resources":[{
+  "type":"link|tool|pdf|roadmap|internship|course|note|repo|other",
+  "title":"Name (required)",
+  "url":"https://...",
+  "description":"1-2 sentences",
+  "category":"Category",
+  "tags":["tag1","tag2"],
+  "priority":"normal|high|pinned",
+  "status":"none|not_applied|applied",
+  "meta":{}
+}]}
 
-Rules:
-- type must be one of: link, tool, pdf, roadmap, internship, course, image, note, repo, other
-- priority must be: normal, high, or pinned
-- tags is an array of strings
-- url can be empty string if no URL
-- Every resource MUST have a title
+For internships, add in meta:
+organiser, stipend, duration, eligibility,
+skills (array), deadline, sector, location
 
-My resources:
-[PASTE YOUR RESOURCES LIST HERE — links, PDFs, tools, notes, etc.]`
+My resources: [PASTE HERE]`
 
-const JSON_FORMAT = `{
+const FMT = `{
   "resources": [
     {
       "type": "link",
       "title": "Resource Name",
       "url": "https://...",
       "description": "Description",
-      "category": "CategoryName",
-      "tags": ["tag1", "tag2"],
-      "priority": "normal"
+      "category": "Category",
+      "tags": ["tag1","tag2"],
+      "priority": "normal",
+      "status": "none",
+      "meta": {}
     }
   ]
 }`
 
-export function ImportTab({ onNotify }) {
+export function ImportTab({ toast }) {
   const importResources = useStore(s => s.importResources)
-  const [jsonText, setJsonText] = useState('')
-  const [dragging, setDragging] = useState(false)
+  const [json, setJson] = useState('')
+  const [drag, setDrag] = useState(false)
 
   const doImport = () => {
     try {
-      const data = JSON.parse(jsonText.trim())
-      if (!data.resources || !Array.isArray(data.resources)) throw new Error('bad')
-      const valid = data.resources.filter(r => r.title)
+      const d = JSON.parse(json.trim())
+      if (!d.resources || !Array.isArray(d.resources)) throw new Error('bad')
+      const valid = d.resources.filter(r => r.title)
       importResources(valid)
-      setJsonText('')
-      onNotify?.(`IMPORTED ${valid.length} RESOURCES`, 'success')
-    } catch { onNotify?.('INVALID JSON FORMAT', 'error') }
+      setJson('')
+      toast?.(`IMPORTED ${valid.length} RESOURCES!`)
+    } catch { toast?.('INVALID JSON FORMAT', 'err') }
   }
 
-  const handleFile = (file) => {
-    const reader = new FileReader()
-    reader.onload = e => setJsonText(e.target.result)
-    reader.readAsText(file)
+  const readFile = (f) => {
+    if (!f) return
+    const r = new FileReader()
+    r.onload = e => setJson(e.target.result)
+    r.readAsText(f)
   }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-
-      {/* Drop zone */}
-      <div style={{ gridColumn: '1/-1', background: 'var(--panel)', border: '1px solid var(--border)', padding: 20 }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: '.65rem', fontWeight: 700, letterSpacing: 3, color: 'var(--accent)', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>↑ DRAG & DROP IMPORT</div>
-        <div
-          onClick={() => document.getElementById('file-inp').click()}
-          onDragOver={e => { e.preventDefault(); setDragging(true) }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if(f) handleFile(f) }}
-          style={{
-            border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`,
-            padding: '30px 20px', textAlign: 'center', cursor: 'pointer',
-            background: dragging ? '#00d4ff05' : 'transparent',
-            color: dragging ? 'var(--accent)' : 'var(--text-dim)',
-            fontFamily: 'var(--font-mono)', fontSize: '.72rem', letterSpacing: 1,
-            marginBottom: 14, transition: 'all .2s'
-          }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: 8, opacity: .5 }}>📁</div>
-          DRAG & DROP YOUR JSON FILE HERE — OR CLICK TO BROWSE<br />
-          <span style={{ fontSize: '.6rem', color: 'var(--text-dim)' }}>Accepts .json files in the defined format</span>
+    <div className="imp-view">
+      {/* Drop zone — full width */}
+      <div className="imp-box" style={{ gridColumn:'1/-1' }}>
+        <h3>↑ IMPORT RESOURCES</h3>
+        <div className={`drop-zone${drag ? ' over' : ''}`}
+          onClick={() => document.getElementById('fi-input').click()}
+          onDragOver={e => { e.preventDefault(); setDrag(true) }}
+          onDragLeave={() => setDrag(false)}
+          onDrop={e => { e.preventDefault(); setDrag(false); readFile(e.dataTransfer.files[0]) }}>
+          📁 DRAG & DROP JSON FILE — OR CLICK TO BROWSE
         </div>
-        <input id="file-inp" type="file" accept=".json" style={{ display: 'none' }} onChange={e => { if(e.target.files[0]) handleFile(e.target.files[0]) }} />
+        <input id="fi-input" type="file" accept=".json" style={{ display:'none' }}
+          onChange={e => readFile(e.target.files[0])} />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '.6rem', color: 'var(--text-dim)' }}>OR PASTE JSON</span>
-          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+          <div style={{ flex:1, height:1, background:'var(--border)' }} />
+          <span style={{ fontFamily:'var(--mono)', fontSize:'.58rem', color:'var(--text3)' }}>OR PASTE JSON</span>
+          <div style={{ flex:1, height:1, background:'var(--border)' }} />
         </div>
 
-        <textarea className="cyber-textarea" style={{ minHeight: 80, marginBottom: 10 }}
-          placeholder='{"resources": [...]}' value={jsonText} onChange={e => setJsonText(e.target.value)} />
+        <textarea className="imp-ta" placeholder='{"resources": [...]}'
+          value={json} onChange={e => setJson(e.target.value)} />
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="cyber-btn green" onClick={doImport}>↑ IMPORT RESOURCES</button>
-          <button className="cyber-btn" onClick={() => navigator.clipboard.writeText(JSON_FORMAT).then(() => onNotify?.('FORMAT COPIED!'))}>COPY FORMAT</button>
+        <div className="imp-btn-row">
+          <button className="imp-btn g" onClick={doImport}>↑ IMPORT</button>
+          <button className="imp-btn" onClick={() => navigator.clipboard.writeText(FMT).then(() => toast?.('FORMAT COPIED!'))}>COPY FORMAT</button>
         </div>
       </div>
 
       {/* AI Prompt */}
-      <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', padding: 20 }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: '.65rem', fontWeight: 700, letterSpacing: 3, color: 'var(--accent)', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>🤖 AI CONVERSION PROMPT</div>
-        <p style={{ fontSize: '.75rem', color: 'var(--text-dim)', marginBottom: 12, lineHeight: 1.6 }}>
-          Copy this prompt and send to any AI (ChatGPT, Claude, Gemini) with your resource list. It will convert everything to the correct JSON format.
+      <div className="imp-box">
+        <h3>🤖 AI CONVERSION PROMPT</h3>
+        <p style={{ fontSize:'.72rem', color:'var(--text2)', marginBottom:10, lineHeight:1.6 }}>
+          Copy → paste into any AI with your resource list. Returns ready-to-import JSON.
         </p>
-        <div style={{ background: 'var(--panel2)', border: '1px solid var(--accent3)', borderLeft: '3px solid var(--accent3)', padding: 16, fontFamily: 'var(--font-mono)', fontSize: '.68rem', color: 'var(--accent3)', lineHeight: 1.8, position: 'relative', whiteSpace: 'pre-wrap', marginBottom: 14 }}>
-          <button onClick={() => navigator.clipboard.writeText(AI_PROMPT).then(() => onNotify?.('AI PROMPT COPIED!'))}
-            style={{ position: 'absolute', top: 10, right: 10, fontFamily: 'var(--font-display)', fontSize: '.45rem', letterSpacing: 1, padding: '3px 8px', border: '1px solid var(--accent3)', color: 'var(--accent3)', background: 'none', cursor: 'pointer', transition: 'all .15s' }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent3)'; e.currentTarget.style.color = 'var(--bg)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--accent3)' }}>
+        <div className="ai-box">
+          <button className="copy-abs"
+            onClick={() => navigator.clipboard.writeText(AI_PROMPT).then(() => toast?.('PROMPT COPIED!'))}>
             COPY
           </button>
           {AI_PROMPT}
         </div>
-        <p style={{ fontSize: '.65rem', color: 'var(--text-dim)', lineHeight: 1.5 }}>
-          💡 Works with any AI: paste your bookmarks, Notion pages, spreadsheet rows, links list — the AI will format them all.
-        </p>
       </div>
 
-      {/* JSON Format Reference */}
-      <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', padding: 20 }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: '.65rem', fontWeight: 700, letterSpacing: 3, color: 'var(--accent)', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>{'{ }'} JSON FORMAT REFERENCE</div>
-        <div style={{ background: '#020a10', border: '1px solid var(--border)', borderLeft: '3px solid var(--accent)', padding: 14, fontFamily: 'var(--font-mono)', fontSize: '.65rem', lineHeight: 1.8, overflowX: 'auto', whiteSpace: 'pre', maxHeight: 280, overflowY: 'auto', marginBottom: 12 }}>
-          <span style={{ color: 'var(--accent)' }}>{`{
-  "resources": [
-    {`}</span>
-          {`
-      `}<span style={{ color: 'var(--accent)' }}>"type"</span>{`:        `}<span style={{ color: 'var(--accent4)' }}>"link"</span>{`,          `}<span style={{ color: 'var(--text-dim)' }}>// link|tool|pdf|roadmap|internship|course|image|note|repo|other</span>
-          {`
-      `}<span style={{ color: 'var(--accent)' }}>"title"</span>{`:       `}<span style={{ color: 'var(--accent4)' }}>"Resource Name"</span>{`,  `}<span style={{ color: 'var(--text-dim)' }}>// required</span>
-          {`
-      `}<span style={{ color: 'var(--accent)' }}>"url"</span>{`:         `}<span style={{ color: 'var(--accent4)' }}>"https://..."</span>{`,    `}<span style={{ color: 'var(--text-dim)' }}>// optional</span>
-          {`
-      `}<span style={{ color: 'var(--accent)' }}>"description"</span>{`: `}<span style={{ color: 'var(--accent4)' }}>"Brief desc"</span>{`,     `}<span style={{ color: 'var(--text-dim)' }}>// optional</span>
-          {`
-      `}<span style={{ color: 'var(--accent)' }}>"category"</span>{`:    `}<span style={{ color: 'var(--accent4)' }}>"Cybersecurity"</span>{`,  `}<span style={{ color: 'var(--text-dim)' }}>// auto-creates tab</span>
-          {`
-      `}<span style={{ color: 'var(--accent)' }}>"tags"</span>{`:        `}<span style={{ color: 'var(--accent3)' }}>["free","important"]</span>{`,`}
-          {`
-      `}<span style={{ color: 'var(--accent)' }}>"priority"</span>{`:    `}<span style={{ color: 'var(--accent4)' }}>"normal"</span>{`         `}<span style={{ color: 'var(--text-dim)' }}>// normal|high|pinned</span>
-          <span style={{ color: 'var(--accent)' }}>{`
-    }
-  ]
-}`}</span>
+      {/* JSON Format */}
+      <div className="imp-box">
+        <h3>{'{ }'} JSON FORMAT</h3>
+        <div className="json-box">
+          <span className="jk">{'{\n  "resources"'}</span>{': [\n    {\n      '}
+          <span className="jk">"type"</span>{'     : '}<span className="js">"internship"</span>{',\n      '}
+          <span className="jk">"title"</span>{'    : '}<span className="js">"Name"</span>{',\n      '}
+          <span className="jk">"url"</span>{'      : '}<span className="js">"https://..."</span>{',\n      '}
+          <span className="jk">"category"</span>{' : '}<span className="js">"Career"</span>{',\n      '}
+          <span className="jk">"tags"</span>{'     : '}<span className="jv">["govt","paid"]</span>{',\n      '}
+          <span className="jk">"priority"</span>{' : '}<span className="js">"pinned"</span>{',\n      '}
+          <span className="jk">"status"</span>{'   : '}<span className="js">"not_applied"</span>{',\n      '}
+          <span className="jk">"meta"</span>{' : {\n        '}
+          <span className="jk">"organiser"</span>{' : '}<span className="js">"Ministry"</span>{',\n        '}
+          <span className="jk">"stipend"</span>{'   : '}<span className="js">"₹10,000/mo"</span>{',\n        '}
+          <span className="jk">"deadline"</span>{'  : '}<span className="js">"Rolling"</span>{',\n        '}
+          <span className="jk">"skills"</span>{'    : '}<span className="jv">["Python"]</span>{'\n      }\n    }\n  ]\n}'}
         </div>
-        <button className="cyber-btn full" onClick={() => navigator.clipboard.writeText(JSON_FORMAT).then(() => onNotify?.('FORMAT COPIED!'))}>COPY FORMAT</button>
+        <button className="imp-btn" style={{ width:'100%' }}
+          onClick={() => navigator.clipboard.writeText(FMT).then(() => toast?.('FORMAT COPIED!'))}>
+          COPY FORMAT
+        </button>
       </div>
-
     </div>
   )
 }

@@ -1,81 +1,91 @@
-import React from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useClock } from '../hooks/useClock'
-import { useNetwork } from '../hooks/useNetwork'
 import { useStore } from '../store'
+import { useAuth } from '../lib/auth'
+import { GRAD_COLORS } from '../store'
 
-const SPEED_COLOR = { excellent: '#00ff88', good: '#00ff88', slow: '#ffaa00', poor: '#ff2d55', offline: '#ff2d55', measuring: '#3d6880', unknown: '#3d6880' }
-const SPEED_LABEL = { excellent: 'FAST', good: 'GOOD', slow: 'SLOW', poor: 'POOR', offline: 'OFFLINE', measuring: '...', unknown: '?' }
+function getInitials(name = '') { return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '??' }
 
-export function TopBar() {
+export function TopBar({ health, onExport, onOpenProfile }) {
   const { timeStr, dateStr } = useClock()
-  const { online, speed, latency } = useNetwork()
-  const resources = useStore(s => s.resources)
-  const todos = useStore(s => s.todos)
-  const sessions = useStore(s => s.sessions)
-  const totalSecs = useStore(s => s.totalSecs)
+  const { user, logout } = useAuth()
+  const resources  = useStore(s => s.resources)
+  const todos      = useStore(s => s.todos)
+  const sessions   = useStore(s => s.sessions)
+  const totalSecs  = useStore(s => s.totalSecs)
+  const dashName   = useStore(s => s.dashName)
+  const setDashName = useStore(s => s.setDashName)
+  const [ddOpen, setDdOpen] = useState(false)
+  const badgeRef = useRef(null)
 
   const done = todos.filter(t => t.done).length
-  const pct = todos.length ? Math.round(done / todos.length * 100) : 0
-  const h = Math.floor(totalSecs / 3600)
-  const m = Math.floor((totalSecs % 3600) / 60)
+  const pct  = todos.length ? Math.round(done / todos.length * 100) : 0
+  const h    = Math.floor(totalSecs / 3600)
+  const m    = Math.floor((totalSecs % 3600) / 60)
+
+  const { net, latency, online } = health
+  const netColor = !online ? 'var(--accent2)' : net === 'FAST' || net === 'GOOD' ? 'var(--accent3)' : net === 'SLOW' ? 'var(--accent4)' : 'var(--accent2)'
+  const sysClass = !online ? 'bad' : (latency && latency > 800) ? 'warn' : 'ok'
+  const sysLabel = !online ? 'OFFLINE' : (latency && latency > 800) ? 'HIGH LATENCY' : 'SYS OK'
+
+  useEffect(() => {
+    const fn = e => { if (badgeRef.current && !badgeRef.current.contains(e.target)) setDdOpen(false) }
+    document.addEventListener('click', fn)
+    return () => document.removeEventListener('click', fn)
+  }, [])
+
+  const n = user?.displayname || user?.username || 'USER'
 
   return (
-    <header style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '10px 20px', borderBottom: '1px solid var(--border)',
-      background: 'linear-gradient(180deg, #000e1a 0%, transparent 100%)',
-      flexShrink: 0, gap: 12, position: 'relative', zIndex: 10
-    }}>
-      <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', fontWeight: 900, color: 'var(--accent)', textShadow: 'var(--glow)', letterSpacing: 3, whiteSpace: 'nowrap' }}>
-        CYBER<span style={{ color: 'var(--accent2)' }}>SPACE</span>{' '}
-        <span style={{ color: 'var(--text-dim)', fontSize: '.7rem' }}>// DEV DASHBOARD</span>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
-        <Pill label="STATUS" value={online ? '● ONLINE' : '● OFFLINE'} color={online ? 'var(--accent3)' : 'var(--accent2)'} />
-        <Pill label="SPEED" value={SPEED_LABEL[speed]} color={SPEED_COLOR[speed]} title={latency ? `${latency}ms latency` : ''} />
-        <Pill label="RESOURCES" value={resources.length} />
-        <Pill label="TASKS" value={todos.length} />
-        <Pill label="DONE" value={pct + '%'} color={pct === 100 ? 'var(--accent3)' : 'var(--accent)'} />
-        <Pill label="SESSION" value={`${h}h ${m}m`} />
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.3rem', color: 'var(--accent)', textShadow: 'var(--glow)', letterSpacing: 2 }}>{timeStr}</div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '.6rem', color: 'var(--text-dim)', letterSpacing: 1 }}>{dateStr}</div>
+    <header className="topbar">
+      <div className="logo-area">
+        <div className="logo-text">CYBER<span>SPACE</span></div>
+        <div className="logo-name-wrap">
+          <span style={{ color:'var(--text3)', fontFamily:'var(--mono)', fontSize:'.65rem' }}>//</span>
+          <input className="logo-dash-name" value={dashName} maxLength={32}
+            title="Click to rename your dashboard"
+            onChange={e => setDashName(e.target.value)}
+            onBlur={e => { const v = e.target.value.trim() || 'My Workspace'; setDashName(v) }}
+            onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }} />
+          <span className="logo-edit-hint" onClick={() => document.querySelector('.logo-dash-name')?.focus()}>✎</span>
         </div>
-        <RingIcon pct={pct} />
+      </div>
+
+      <div className="top-center">
+        <div className="tpill">
+          <div className={`health-dot ${sysClass}`} />
+          <span className="v" style={{ color: sysClass === 'ok' ? 'var(--accent3)' : sysClass === 'warn' ? 'var(--accent4)' : 'var(--accent2)' }}>{sysLabel}</span>
+        </div>
+        <div className="tpill g"><span>NET</span><span className="v" style={{ color: netColor }}>{net}</span></div>
+        <div className="tpill y"><span>LATENCY</span><span className="v">{latency ? latency + 'ms' : '—'}</span></div>
+        <div className="tpill"><span>RESOURCES</span><span className="v">{resources.length}</span></div>
+        <div className="tpill"><span>TASKS</span><span className="v">{todos.length}</span></div>
+        <div className="tpill g"><span>DONE</span><span className="v">{pct}%</span></div>
+        <div className="tpill"><span>SESSION</span><span className="v">{h}h {m}m</span></div>
+      </div>
+
+      <div className="topbar-right">
+        <div className="clock-wrap">
+          <div className="clock-t">{timeStr}</div>
+          <div className="clock-d">{dateStr}</div>
+        </div>
+
+        <div className={`user-badge${ddOpen ? ' open' : ''}`} ref={badgeRef} onClick={() => setDdOpen(v => !v)}>
+          <div className="user-avatar" style={{ background: user?.avatarColor || GRAD_COLORS[0] }}>{getInitials(n)}</div>
+          <div className="user-name">{n}</div>
+          <span className="user-dd-chevron">▾</span>
+          <div className="user-dropdown">
+            <div className="user-dd-header">
+              <div className="user-dd-name">{n}</div>
+              <div className="user-dd-email">@{user?.username}</div>
+            </div>
+            <div className="user-dd-item" onClick={() => { setDdOpen(false); onOpenProfile?.() }}>⚙ Edit Profile</div>
+            <div className="user-dd-item" onClick={() => { setDdOpen(false); document.querySelector('.logo-dash-name')?.focus(); document.querySelector('.logo-dash-name')?.select() }}>✎ Rename Dashboard</div>
+            <div className="user-dd-item" onClick={() => { setDdOpen(false); onExport?.() }}>↓ Export Data</div>
+            <div className="user-dd-item danger" onClick={() => { setDdOpen(false); if (confirm('Sign out?')) logout() }}>→ Sign Out</div>
+          </div>
+        </div>
       </div>
     </header>
-  )
-}
-
-function Pill({ label, value, color, title }) {
-  return (
-    <div title={title || ''} style={{
-      display: 'flex', alignItems: 'center', gap: 6,
-      padding: '4px 12px', border: '1px solid var(--border)',
-      background: 'var(--panel)', fontFamily: 'var(--font-mono)', fontSize: '.7rem', whiteSpace: 'nowrap'
-    }}>
-      <span style={{ color: 'var(--text-dim)' }}>{label}</span>
-      <span style={{ color: color || 'var(--accent)', fontSize: '.85rem' }}>{value}</span>
-    </div>
-  )
-}
-
-function RingIcon({ pct }) {
-  const r = 12, circ = 2 * Math.PI * r
-  const offset = circ * (1 - pct / 100)
-  return (
-    <div style={{ position: 'relative', width: 32, height: 32 }}>
-      <svg width="32" height="32" viewBox="0 0 32 32" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="16" cy="16" r={r} fill="none" stroke="var(--border)" strokeWidth="3" />
-        <circle cx="16" cy="16" r={r} fill="none" stroke="var(--accent3)" strokeWidth="3"
-          strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset}
-          style={{ transition: 'stroke-dashoffset .3s', filter: 'drop-shadow(0 0 4px var(--accent3))' }} />
-      </svg>
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.7rem' }}>⚡</div>
-    </div>
   )
 }
